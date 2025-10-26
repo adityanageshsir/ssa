@@ -6,6 +6,7 @@ const cors = require('cors')
 const passport = require('passport')
 const { generalLimiter, authLimiter, smsLimiter } = require('./middleware/rateLimit')
 const requestLoggingMiddleware = require('./middleware/requestLogger')
+const WebhookService = require('./services/webhookService')
 
 // init
 const app = express()
@@ -60,6 +61,16 @@ app.use('/api/sms', smsLimiter, sms)
 const logs = require('./routes/api/logs')
 // Apply auth limiter to logs routes (should be restricted to admin in production)
 app.use('/api/logs', authLimiter, logs)
+
+const webhooks = require('./routes/api/webhooks')
+// Apply auth limiter to webhook routes
+app.use('/api/webhooks', authLimiter, webhooks)
+
+// Start webhook retry job (check every 60 seconds for failed webhooks to retry)
+setInterval(() => {
+    WebhookService.retryFailedEvents()
+        .catch(error => console.error(`Webhook retry job error: ${error.message}`))
+}, 60000) // Run every 60 seconds
 
 
 app.get('*', (req, res) => {

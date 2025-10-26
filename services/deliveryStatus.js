@@ -4,6 +4,7 @@
  */
 
 const Log = require('../model/Log');
+const WebhookService = require('./webhookService');
 
 class DeliveryStatusService {
     /**
@@ -85,6 +86,28 @@ class DeliveryStatusService {
             if (!updatedLog) {
                 throw new Error(`Log not found with ID: ${logId}`);
             }
+
+            // Trigger webhook event for delivery status change
+            const eventType = `sms.${status}`;
+            const eventData = {
+                logId: updatedLog._id.toString(),
+                provider: updatedLog.provider_used,
+                recipient: updatedLog.victim,
+                status: status,
+                messageId: updatedLog.provider_message_id,
+                cost: updatedLog.cost,
+                currency: updatedLog.currency,
+                sentAt: updatedLog.sent_at,
+                deliveredAt: updatedLog.delivered_at,
+                errorReason: updatedLog.error_reason,
+                errorCode: updatedLog.error_code
+            };
+
+            // Fire webhook asynchronously (don't wait for completion)
+            setImmediate(() => {
+                WebhookService.triggerEvent(updatedLog.username, eventType, eventData)
+                    .catch(error => console.error(`Webhook trigger error: ${error.message}`))
+            });
 
             return updatedLog;
         } catch (error) {

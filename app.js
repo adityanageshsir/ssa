@@ -4,6 +4,7 @@ const bodyParse = require('body-parser')
 const path = require('path')
 const cors = require('cors')
 const passport = require('passport')
+const { generalLimiter, authLimiter, smsLimiter } = require('./middleware/rateLimit')
 
 // init
 const app = express()
@@ -17,6 +18,9 @@ app.use(bodyParse.urlencoded({
 app.use(bodyParse.json())
 
 app.use(cors())
+
+// Apply general rate limiter to all routes
+app.use(generalLimiter)
 
 // setting static directory
 app.use(express.static(path.join(__dirname, 'public')))
@@ -42,10 +46,12 @@ app.get('/', (req, res) => {
 })
 
 const users = require('./routes/api/users')
-app.use('/api/users', users)
+// Apply strict auth limiter to user routes
+app.use('/api/users', authLimiter, users)
 
 const sms = require('./routes/api/sms')
-app.use('/api/sms', sms)
+// Apply SMS limiter to SMS routes
+app.use('/api/sms', smsLimiter, sms)
 
 
 app.get('*', (req, res) => {

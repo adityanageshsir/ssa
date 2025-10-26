@@ -7,6 +7,7 @@ const secret = require('../../config/keys').jwt_scret
 const User = require('../../model/User')
 const RegisterToken = require('../../model/RegisterToken')
 const MailgunService = require('../../services/mailgun')
+const UserProfileService = require('../../services/userProfile')
 const path = require('path')
 
 
@@ -260,6 +261,144 @@ router.get('/profile', passport.authenticate('jwt', { session: false} ) ,(req, r
     // })
 })
 
+/**
+ * @route PUT api/users/profile
+ * @desc Update user profile (name and email)
+ * @access Private
+ */
+router.put('/profile', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        const { name, email } = req.body;
+
+        // Validate input
+        if (!name && !email) {
+            return res.status(400).json({
+                success: false,
+                msg: 'At least one field (name or email) is required'
+            });
+        }
+
+        // Update profile using service
+        const updatedUser = await UserProfileService.updateProfile(
+            req.user._id,
+            { name, email }
+        );
+
+        res.json({
+            success: true,
+            msg: 'Profile updated successfully',
+            user: updatedUser
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            msg: error.message
+        });
+    }
+});
+
+/**
+ * @route PUT api/users/change-password
+ * @desc Change user password
+ * @access Private
+ */
+router.put('/change-password', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        const { currentPassword, newPassword, confirmPassword } = req.body;
+
+        // Validate input
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            return res.status(400).json({
+                success: false,
+                msg: 'All password fields are required'
+            });
+        }
+
+        // Change password using service
+        const result = await UserProfileService.changePassword(req.user._id, {
+            currentPassword,
+            newPassword,
+            confirmPassword
+        });
+
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            msg: error.message
+        });
+    }
+});
+
+/**
+ * @route GET api/users/profile
+ * @desc Get user profile
+ * @access Private
+ */
+router.get('/profile', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        const userProfile = await UserProfileService.getProfile(req.user._id);
+        
+        res.json({
+            success: true,
+            user: userProfile
+        });
+    } catch (error) {
+        res.status(404).json({
+            success: false,
+            msg: error.message
+        });
+    }
+});
+
+/**
+ * @route GET api/users/password-strength
+ * @desc Validate password strength
+ * @access Public
+ */
+router.get('/password-strength/:password', async (req, res) => {
+    try {
+        const validation = UserProfileService.validatePasswordStrength(req.params.password);
+        
+        res.json({
+            success: true,
+            validation
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            msg: error.message
+        });
+    }
+});
+
+/**
+ * @route DELETE api/users/account
+ * @desc Delete user account
+ * @access Private
+ */
+router.delete('/account', passport.authenticate('jwt', { session: false }), async (req, res) => {
+    try {
+        const { password } = req.body;
+
+        if (!password) {
+            return res.status(400).json({
+                success: false,
+                msg: 'Password is required to delete account'
+            });
+        }
+
+        // Delete account using service
+        const result = await UserProfileService.deleteAccount(req.user._id, password);
+
+        res.json(result);
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            msg: error.message
+        });
+    }
+});
 
 
 

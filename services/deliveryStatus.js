@@ -176,6 +176,163 @@ class DeliveryStatusService {
     }
 
     /**
+     * Get advanced filtered SMS history with search capabilities
+     * @param {string} username - Username
+     * @param {Object} filters - Advanced filter options
+     * @returns {Promise<Object>} Paginated results with metadata
+     */
+    static async getAdvancedSmsHistory(username, filters = {}) {
+        try {
+            const {
+                limit = 20,
+                offset = 0,
+                status = null,
+                provider = null,
+                startDate = null,
+                endDate = null,
+                recipientPhone = null,
+                messageContent = null,
+                sortBy = 'created_at',
+                sortOrder = -1,
+                onlyFailed = false,
+                onlyDelivered = false,
+                onlyPending = false
+            } = filters;
+
+            const query = { username };
+
+            // Status filters
+            if (status) {
+                query.delivery_status = status;
+            } else if (onlyFailed) {
+                query.delivery_status = { $in: ['failed', 'bounced'] };
+            } else if (onlyDelivered) {
+                query.delivery_status = 'delivered';
+            } else if (onlyPending) {
+                query.delivery_status = 'pending';
+            }
+
+            // Provider filter
+            if (provider) query.provider_used = provider;
+
+            // Date range filter
+            if (startDate || endDate) {
+                query.created_at = {};
+                if (startDate) query.created_at.$gte = new Date(startDate);
+                if (endDate) query.created_at.$lte = new Date(endDate);
+            }
+
+            // Recipient phone filter (exact or partial match)
+            if (recipientPhone) {
+                query.victim = { $regex: recipientPhone, $options: 'i' };
+            }
+
+            // Message content search (case-insensitive)
+            if (messageContent) {
+                query.message = { $regex: messageContent, $options: 'i' };
+            }
+
+            // Sort order validation
+            const sortOrderNum = sortOrder === 'asc' || sortOrder === 1 ? 1 : -1;
+
+            const total = await Log.countDocuments(query);
+            const logs = await Log.find(query)
+                .sort({ [sortBy]: sortOrderNum })
+                .limit(parseInt(limit))
+                .skip(parseInt(offset));
+
+            return {
+                total,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                page: Math.floor(parseInt(offset) / parseInt(limit)) + 1,
+                totalPages: Math.ceil(total / parseInt(limit)),
+                hasMore: (parseInt(offset) + parseInt(limit)) < total,
+                data: logs
+            };
+        } catch (error) {
+            throw new Error(`Failed to get advanced SMS history: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get SMS history summary statistics
+     * @param {string} username - Username
+     * @param {Object} filters - Filter options
+     * @returns {Promise<Object>} Summary statistics
+     */
+    static async getSmsHistorySummary(username, filters = {}) {
+        try {
+            const {
+                startDate = null,
+                endDate = null,
+                provider = null
+            } = filters;
+
+            const match = { $match: { username } };
+
+            // Add filters to match stage
+            if (provider) match.$match.provider_used = provider;
+            if (startDate || endDate) {
+                match.$match.created_at = {};
+                if (startDate) match.$match.created_at.$gte = new Date(startDate);
+                if (endDate) match.$match.created_at.$lte = new Date(endDate);
+            }
+
+            const summary = await Log.aggregate([
+                match,
+                {
+                    $facet: {
+                        byStatus: [
+                            {
+                                $group: {
+                                    _id: '$delivery_status',
+                                    count: { $sum: 1 }
+                                }
+                            },
+                            { $sort: { count: -1 } }
+                        ],
+                        byProvider: [
+                            {
+                                $group: {
+                                    _id: '$provider_used',
+                                    count: { $sum: 1 }
+                                }
+                            },
+                            { $sort: { count: -1 } }
+                        ],
+                        dailyStats: [
+                            {
+                                $group: {
+                                    _id: {
+                                        $dateToString: { format: '%Y-%m-%d', date: '$created_at' }
+                                    },
+                                    count: { $sum: 1 },
+                                    delivered: {
+                                        $sum: { $cond: [{ $eq: ['$delivery_status', 'delivered'] }, 1, 0] }
+                                    },
+                                    failed: {
+                                        $sum: { $cond: [{ $eq: ['$delivery_status', 'failed'] }, 1, 0] }
+                                    }
+                                }
+                            },
+                            { $sort: { _id: -1 } }
+                        ]
+                    }
+                }
+            ]);
+
+            return summary[0] || {
+                byStatus: [],
+                byProvider: [],
+                dailyStats: []
+            };
+        } catch (error) {
+            throw new Error(`Failed to get SMS history summary: ${error.message}`);
+        }
+    }
+
+    /**
      * Get delivery statistics for a user
      * @param {string} username - Username
      * @param {Object} options - Filter options (startDate, endDate)

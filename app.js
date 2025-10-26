@@ -5,6 +5,7 @@ const path = require('path')
 const cors = require('cors')
 const passport = require('passport')
 const { generalLimiter, authLimiter, smsLimiter } = require('./middleware/rateLimit')
+const requestLoggingMiddleware = require('./middleware/requestLogger')
 
 // init
 const app = express()
@@ -18,6 +19,9 @@ app.use(bodyParse.urlencoded({
 app.use(bodyParse.json())
 
 app.use(cors())
+
+// Apply request logging middleware to all routes
+app.use(requestLoggingMiddleware())
 
 // Apply general rate limiter to all routes
 app.use(generalLimiter)
@@ -52,6 +56,10 @@ app.use('/api/users', authLimiter, users)
 const sms = require('./routes/api/sms')
 // Apply SMS limiter to SMS routes
 app.use('/api/sms', smsLimiter, sms)
+
+const logs = require('./routes/api/logs')
+// Apply auth limiter to logs routes (should be restricted to admin in production)
+app.use('/api/logs', authLimiter, logs)
 
 
 app.get('*', (req, res) => {
